@@ -5,6 +5,10 @@ on:
   pull_request:
     types: [opened, reopened, synchronize, edited]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   semantic:
     uses: influxdata/validate-semantic-github-messages/.github/workflows/semantic.yml@main

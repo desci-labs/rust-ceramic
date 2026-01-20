@@ -5,34 +5,34 @@
 # DOCKER_PASSWORD must be set
 # Use:
 #
-#   export DOCKER_PASSWORD=$(aws ecr-public get-login-password --region us-east-1)
-#   echo "${DOCKER_PASSWORD}" | docker login --username AWS --password-stdin public.ecr.aws/r5b3e0r5
+#   export DOCKER_PASSWORD=$(aws ecr get-login-password --region us-east-2)
+#   echo "${DOCKER_PASSWORD}" | docker login --username AWS --password-stdin 523044037273.dkr.ecr.us-east-2.amazonaws.com
 #
 # to login to docker. That password will be valid for 12h.
 
 BUILD_MODE=${BUILD_MODE-release}
-IMAGE_NAME=${IMAGE_NAME-public.ecr.aws/r5b3e0r5/3box/ceramic-one}
+IMAGE_NAME=${IMAGE_NAME-523044037273.dkr.ecr.us-east-2.amazonaws.com/ceramic-one}
 
-docker buildx build --load --build-arg="BUILD_MODE=$BUILD_MODE" -t 3box/ceramic-one .
+docker buildx build --load --build-arg="BUILD_MODE=$BUILD_MODE" -t ceramic-one .
 
 if [[ -n "$SHA" ]]; then
-  docker tag 3box/ceramic-one:latest ${IMAGE_NAME}:"$SHA"
+  docker tag ceramic-one:latest "${IMAGE_NAME}":"$SHA"
 fi
 if [[ -n "$SHA_TAG" ]]; then
-  docker tag 3box/ceramic-one:latest ${IMAGE_NAME}:"$SHA_TAG"
+  docker tag ceramic-one:latest "${IMAGE_NAME}":"$SHA_TAG"
 fi
 if [[ -n "$RELEASE_TAG" ]]; then
-  docker tag 3box/ceramic-one:latest ${IMAGE_NAME}:"$RELEASE_TAG"
+  docker tag ceramic-one:latest "${IMAGE_NAME}":"$RELEASE_TAG"
 fi
 if [[ "$TAG_LATEST" == "true" ]]; then
-  docker tag 3box/ceramic-one:latest ${IMAGE_NAME}:latest
+  docker tag ceramic-one:latest "${IMAGE_NAME}":latest
 fi
 if [[ -n "$CUSTOM_TAG" ]]; then
-  docker tag 3box/ceramic-one:latest ${IMAGE_NAME}:"$CUSTOM_TAG"
+  docker tag ceramic-one:latest "${IMAGE_NAME}":"$CUSTOM_TAG"
 fi
 
 if [ "$NO_PUSH" != "true" ]
 then
-    docker push -a public.ecr.aws/r5b3e0r5/3box/ceramic-one
+    docker push -a "${IMAGE_NAME}"
 fi
 
