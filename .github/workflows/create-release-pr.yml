@@ -25,7 +25,7 @@ jobs:
       - name: git config
         run: |
           git config --global --add safe.directory '*'
-          git config user.email "github@3box.io"
+          git config user.email "github@desci.com"
           git config user.name "Github Automation"
       - name: Create release PR
         run: make release-pr
