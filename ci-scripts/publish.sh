@@ -5,7 +5,7 @@
 # DOCKER_PASSWORD must be set
 # Use:
 #
-#   export DOCKER_PASSWORD=$(aws ecr-public get-login-password --region us-east-2)
+#   export DOCKER_PASSWORD=$(aws ecr get-login-password --region us-east-2)
 #   echo "${DOCKER_PASSWORD}" | docker login --username AWS --password-stdin 523044037273.dkr.ecr.us-east-2.amazonaws.com
 #
 # to login to docker. That password will be valid for 12h.
