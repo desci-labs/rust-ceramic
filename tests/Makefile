@@ -17,7 +17,7 @@ TEST_POST_MIGRATION_NETWORK ?= ./migration-networks/basic-go-rust-post.yaml
 # Path to performance simulation.
 TEST_SIMULATION ?= ./simulations/basic-simulation.yaml
 # Name for the test suite image, without any tag
-TEST_SUITE_IMAGE_NAME ?= public.ecr.aws/r5b3e0r5/3box/ceramic-tests-suite
+TEST_SUITE_IMAGE_NAME ?= public.ecr.aws/m3e8d9d6/desci-labs/ceramic-tests-suite
 # Name for the hermetic-driver image, without any tag
 HERMETIC_DRIVER_IMAGE_NAME ?= public.ecr.aws/r5b3e0r5/3box/hermetic-driver
 # Full path of the test suite image with a tag
@@ -32,7 +32,7 @@ CERAMIC_ONE_IMAGE_TAG ?= ${BUILD_TAG}
 CERAMIC_ONE_IMAGE = ${CERAMIC_ONE_IMAGE_NAME}:${CERAMIC_ONE_IMAGE_TAG}
 endif
 ifneq ($(CERAMIC_ONE_IMAGE_TAG),)
-CERAMIC_ONE_IMAGE_NAME ?= public.ecr.aws/r5b3e0r5/3box/ceramic-one
+CERAMIC_ONE_IMAGE_NAME ?= public.ecr.aws/m3e8d9d6/desci-labs/ceramic-one
 CERAMIC_ONE_IMAGE = ${CERAMIC_ONE_IMAGE_NAME}:${CERAMIC_ONE_IMAGE_TAG}
 endif
 ifneq ($(CERAMIC_ONE_IMAGE),)
