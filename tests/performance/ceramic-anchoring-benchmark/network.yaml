@@ -15,7 +15,7 @@ spec:
           resourceLimits:
             cpu: "6"
             memory: 6Gi
-          image: public.ecr.aws/r5b3e0r5/3box/ceramic-one:latest
+          image: public.ecr.aws/m3e8d9d6/desci-labs/ceramic-one:latest
           imagePullPolicy: Always
       resourceLimits:
         cpu: "4"

@@ -59,7 +59,7 @@ Start rust-ceramic using the host network:
 
 ```bash
 docker run --network=host \
-  public.ecr.aws/r5b3e0r5/3box/ceramic-one:latest
+  public.ecr.aws/m3e8d9d6/desci-labs/ceramic-one:latest
 ```
 
 ### Docker-Compose
@@ -78,7 +78,7 @@ version: '3.8'
 
 services:
   ceramic-one:
-    image: public.ecr.aws/r5b3e0r5/3box/ceramic-one:latest
+    image: public.ecr.aws/m3e8d9d6/desci-labs/ceramic-one:latest
     network_mode: "host"
     volumes:
       - ceramic-one-data:/root/.ceramic-one

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Setup port-forward to each pod in the Keramik network
 # prints env vars for use in the tests using the port-forwarded values.
 

@@ -1,12 +1,11 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Build and publish a docker image to run the tests suite
 #
 # DOCKER_PASSWORD must be set
 # Use:
 #
-#   export DOCKER_PASSWORD=$(aws ecr-public get-login-password --region us-east-1)
-#   echo "${DOCKER_PASSWORD}" | docker login --username AWS --password-stdin public.ecr.aws/r5b3e0r5
+# aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws/m3e8d9d6
 #
 # to login to docker. That password will be valid for 12h.
 
@@ -15,7 +14,7 @@ cd $(dirname $0)/../suite
 
 tag=${1-latest}
 BUILD_PROFILE=${BUILD_PROFILE-release}
-IMAGE_NAME=${IMAGE_NAME-public.ecr.aws/r5b3e0r5/3box/ceramic-tests-suite}
+IMAGE_NAME=${IMAGE_NAME-public.ecr.aws/m3e8d9d6/desci-labs/ceramic-tests-suite}
 
 PUSH_ARGS="--push"
 if [ "$NO_PUSH" = "true" ]

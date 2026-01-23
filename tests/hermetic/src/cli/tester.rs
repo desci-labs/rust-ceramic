@@ -643,7 +643,7 @@ fn correctness_test(namespace: &str, image: Option<String>, test_selector: Strin
         (Some(image), Some("IfNotPresent".to_owned()))
     } else {
         (
-            Some("public.ecr.aws/r5b3e0r5/3box/ceramic-tests-suite".to_owned()),
+            Some("public.ecr.aws/m3e8d9d6/desci-labs/ceramic-tests-suite".to_owned()),
             Some("Always".to_owned()),
         )
     };

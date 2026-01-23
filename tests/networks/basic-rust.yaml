@@ -5,6 +5,7 @@ metadata:
   name: basic-rust
 spec:
   replicas: 2
+  devMode: true
   ceramic:
     - env:
         CERAMIC_RECON_MODE: "true"
@@ -12,15 +13,17 @@ spec:
       imagePullPolicy: Always # Ensures the image is always pulled before starting the pod
       ipfs:
         rust:
+          image: public.ecr.aws/m3e8d9d6/desci-labs/ceramic-one:latest
           env:
             CERAMIC_ONE_EVM_RPC_URL: "http://ganache:8545"
-            CERAMIC_ONE_EVM_PRIVATE_KEY: "0000000000000000000000000000000000000000000000000000000000000001"
+            # CERAMIC_ONE_EVM_PRIVATE_KEY: "0000000000000000000000000000000000000000000000000000000000000001"
+            CERAMIC_ONE_EVM_PRIVATE_KEY: "06dd0990d19001c57eeea6d32e8fdeee40d3945962caf18c18c3930baa5a6ec9"
             CERAMIC_ONE_EVM_CHAIN_ID: "1337"
             CERAMIC_ONE_ANCHOR_INTERVAL: "20"
             CERAMIC_ONE_EVM_CONTRACT_ADDRESS: "0x231055A0852D67C7107Ad0d0DFeab60278fE6AdC"
             CERAMIC_ONE_FLIGHT_SQL_BIND_ADDRESS: "0.0.0.0:5102"
           resourceLimits:
-            cpu: "4"
+            cpu: "3"
             memory: "1Gi"
   # Use Kubo with CAS because it still needs pubsub
   cas:

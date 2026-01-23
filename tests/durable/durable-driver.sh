@@ -1,7 +1,7 @@
 #!/bin/bash
 
 tag=${BUILD_TAG-latest}
-IMAGE_NAME=${IMAGE_NAME-public.ecr.aws/r5b3e0r5/3box/ceramic-tests-suite}
+IMAGE_NAME=${IMAGE_NAME-public.ecr.aws/m3e8d9d6/desci-labs/ceramic-tests-suite}
 
 # This script won't launch any daemons. It will assume the test suite is being pointed to some instance(s) of ComposeDB
 # and Ceramic running in durable infrastructure.
