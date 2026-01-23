@@ -2,11 +2,41 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.58.1] - 2026-01-23
+
+### 🐛 Bug Fixes
+
+- Compare hashes instead of CIDs for anchor proof validation ([#754](https://github.com/ceramicnetwork/rust-ceramic/issues/754))
+- Use cid.hash().digest() for codec-agnostic hash extraction ([#755](https://github.com/ceramicnetwork/rust-ceramic/issues/755))
+- Clippy
+- Self-anchoring never stored inclusion proofs, causing concluder failures
+- Revert RPC autodiscovery of proofs to self-heal unstored self-anchors
+- Allow fallback validation to accept codec-shifted digests in chain proofs
+
+### 🧪 Testing
+
+- Fix self-anchoring tests against local kind cluster using desci-labs images
+
+### ⚙️ Miscellaneous Tasks
+
+- Update forked workflows
+- Fix docker login
+- Fix aws auth
+- Gate docker login on fork PRs
+- Set wf concurrency group to limit concurrent checks
+- Fix image publish workflow runner
+- Skip release-debug builds by default
+- Fix ecr-public login for integration suite publish
+
 ## [0.58.0] - 2025-12-08
 
 ### 🚀 Features
 
 - *(anchor-evm)* Add CLI options for EVM self-anchoring ([#748](https://github.com/ceramicnetwork/rust-ceramic/issues/748))
+
+### ⚙️ Miscellaneous Tasks
+
+- Version v0.58.0 ([#749](https://github.com/ceramicnetwork/rust-ceramic/issues/749))
 
 ## [0.57.0] - 2025-11-28
 
