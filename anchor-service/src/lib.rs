@@ -6,12 +6,14 @@ mod anchor_batch;
 mod cas_mock;
 mod high_water_mark_store;
 mod merkle_tree;
+pub mod metrics;
 mod time_event;
 mod transaction_manager;
 
 pub use anchor::{AnchorRequest, MerkleNode, MerkleNodes, TimeEventBatch, TimeEventInsertable};
 pub use anchor_batch::{AnchorService, Store};
 pub use cas_mock::{MockAnchorEventService, MockCas};
+pub use metrics::Metrics;
 pub use transaction_manager::{
     ChainInclusionData, DetachedTimeEvent, RootTimeEvent, TransactionManager,
 };

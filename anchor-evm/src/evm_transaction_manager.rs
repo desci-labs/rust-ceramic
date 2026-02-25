@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use std::time::Duration;
 
 use alloy::{
@@ -14,10 +15,12 @@ use ceramic_anchor_service::{
     ChainInclusionData, DetachedTimeEvent, MerkleNodes, RootTimeEvent, TransactionManager,
 };
 use ceramic_core::{Cid, SerializeExt};
-use tokio::time::{interval, sleep};
+use ceramic_metrics::Recorder;
+use tokio::time::{interval, sleep, Instant};
 use tracing::{debug, info, warn};
 use url::Url;
 
+use crate::metrics::{EvmEvent, Metrics};
 use crate::{contract::AnchorContract, proof_builder::ProofBuilder};
 
 /// Configuration for EVM transaction manager
@@ -83,6 +86,7 @@ impl Default for EvmConfig {
 /// EVM-based transaction manager for self-anchoring
 pub struct EvmTransactionManager {
     config: EvmConfig,
+    metrics: Option<Arc<Metrics>>,
 }
 
 /// Result of submitting and confirming an anchor transaction
@@ -95,15 +99,26 @@ struct AnchorResult {
     timestamp: u64,
     /// The transaction input data (0x-prefixed function selector + hash)
     tx_input: String,
+    /// Total duration from start to confirmed receipt
+    total_duration: Duration,
+    /// Duration spent waiting for confirmations
+    confirmation_duration: Duration,
+    /// Gas cost in wei
+    gas_cost_wei: u128,
 }
 
 impl EvmTransactionManager {
-    /// Create a new EVM transaction manager
+    /// Create a new EVM transaction manager without metrics.
     pub async fn new(config: EvmConfig) -> Result<Self> {
+        Self::new_with_metrics(config, None).await
+    }
+
+    /// Create a new EVM transaction manager with optional metrics.
+    pub async fn new_with_metrics(config: EvmConfig, metrics: Option<Arc<Metrics>>) -> Result<Self> {
         // Validate configuration
         Self::validate_config(&config)?;
 
-        Ok(Self { config })
+        Ok(Self { config, metrics })
     }
 
     /// Validate the configuration
@@ -150,6 +165,8 @@ impl EvmTransactionManager {
 
     /// Submit an anchor transaction and wait for confirmation with retry logic
     async fn submit_and_wait(&self, root_cid: Cid) -> Result<AnchorResult> {
+        let total_start = Instant::now();
+
         info!(
             "Anchoring root CID: {} on chain {}",
             root_cid, self.config.chain_id
@@ -202,6 +219,16 @@ impl EvmTransactionManager {
             .map_err(|e| anyhow!("Failed to get wallet balance: {}", e))?;
         info!("Starting wallet balance: {} wei", starting_balance);
 
+        // Update wallet balance metric
+        if let Some(ref metrics) = self.metrics {
+            // U256 to u128: saturate at u128::MAX (a very large balance)
+            let balance_u128: u128 = starting_balance.try_into().unwrap_or(u128::MAX);
+            metrics.record(&EvmEvent::WalletBalanceUpdated {
+                chain_id: self.config.chain_id,
+                balance_wei: balance_u128,
+            });
+        }
+
         // Wait for any pending transactions from previous runs to clear
         Self::wait_for_pending_transactions(&provider, wallet_address).await;
 
@@ -218,6 +245,13 @@ impl EvmTransactionManager {
 
         for attempt in 0..max_retries {
             if attempt > 0 {
+                // Record retry attempt metric
+                if let Some(ref metrics) = self.metrics {
+                    metrics.record(&EvmEvent::RetryAttempt {
+                        chain_id: self.config.chain_id,
+                    });
+                }
+
                 let delay = self.config.retry_config.base_delay.mul_f64(
                     self.config
                         .retry_config
@@ -245,6 +279,13 @@ impl EvmTransactionManager {
                     info!("Anchor transaction submitted: {}", tx_hash);
                     previous_tx_hashes.push(tx_hash.clone());
 
+                    // Record transaction submitted metric
+                    if let Some(ref metrics) = self.metrics {
+                        metrics.record(&EvmEvent::TransactionSubmitted {
+                            chain_id: self.config.chain_id,
+                        });
+                    }
+
                     // Check if transaction reverted
                     if !receipt.status() {
                         anyhow::bail!(
@@ -259,17 +300,37 @@ impl EvmTransactionManager {
                         .ok_or_else(|| anyhow!("Transaction receipt missing block number"))?;
 
                     // Wait for required confirmations
+                    let confirmation_start = Instant::now();
                     match self
                         .wait_for_confirmations(&provider, &tx_hash, block_number)
                         .await
                     {
                         Ok(()) => {
-                            // Log ending wallet balance
-                            if let Ok(ending_balance) = provider.get_balance(wallet_address).await {
-                                info!("Ending wallet balance: {} wei", ending_balance);
-                                let gas_used = starting_balance.saturating_sub(ending_balance);
-                                info!("Total gas cost: {} wei", gas_used);
-                            }
+                            let confirmation_duration = confirmation_start.elapsed();
+                            let total_duration = total_start.elapsed();
+
+                            // Log ending wallet balance and calculate gas cost
+                            let gas_cost_wei: u128 =
+                                if let Ok(ending_balance) = provider.get_balance(wallet_address).await
+                                {
+                                    info!("Ending wallet balance: {} wei", ending_balance);
+                                    let gas_used = starting_balance.saturating_sub(ending_balance);
+                                    info!("Total gas cost: {} wei", gas_used);
+
+                                    // Update wallet balance metric
+                                    if let Some(ref metrics) = self.metrics {
+                                        let balance_u128: u128 =
+                                            ending_balance.try_into().unwrap_or(u128::MAX);
+                                        metrics.record(&EvmEvent::WalletBalanceUpdated {
+                                            chain_id: self.config.chain_id,
+                                            balance_wei: balance_u128,
+                                        });
+                                    }
+
+                                    gas_used.try_into().unwrap_or(u128::MAX)
+                                } else {
+                                    0
+                                };
 
                             // Get block hash from receipt
                             let block_hash = receipt
@@ -292,6 +353,9 @@ impl EvmTransactionManager {
                                 block_hash: format!("0x{:x}", block_hash),
                                 timestamp: block.header.timestamp,
                                 tx_input,
+                                total_duration,
+                                confirmation_duration,
+                                gas_cost_wei,
                             });
                         }
                         Err(e) => {
@@ -329,11 +393,28 @@ impl EvmTransactionManager {
                                 .await
                             {
                                 info!("Previous transaction {} was mined successfully", prev_tx);
-                                if let Ok(ending_balance) =
-                                    provider.get_balance(wallet_address).await
-                                {
-                                    info!("Ending wallet balance: {} wei", ending_balance);
-                                }
+                                let total_duration = total_start.elapsed();
+
+                                let gas_cost_wei: u128 =
+                                    if let Ok(ending_balance) = provider.get_balance(wallet_address).await
+                                    {
+                                        info!("Ending wallet balance: {} wei", ending_balance);
+                                        let gas_used = starting_balance.saturating_sub(ending_balance);
+
+                                        // Update wallet balance metric
+                                        if let Some(ref metrics) = self.metrics {
+                                            let balance_u128: u128 =
+                                                ending_balance.try_into().unwrap_or(u128::MAX);
+                                            metrics.record(&EvmEvent::WalletBalanceUpdated {
+                                                chain_id: self.config.chain_id,
+                                                balance_wei: balance_u128,
+                                            });
+                                        }
+
+                                        gas_used.try_into().unwrap_or(u128::MAX)
+                                    } else {
+                                        0
+                                    };
 
                                 // Get block info from the previous receipt
                                 let block_hash = prev_receipt.block_hash.ok_or_else(|| {
@@ -359,6 +440,10 @@ impl EvmTransactionManager {
                                     block_hash: format!("0x{:x}", block_hash),
                                     timestamp: block.header.timestamp,
                                     tx_input,
+                                    total_duration,
+                                    // For recovered transactions, we don't have exact confirmation timing
+                                    confirmation_duration: Duration::ZERO,
+                                    gas_cost_wei,
                                 });
                             }
                         }
@@ -442,6 +527,27 @@ impl EvmTransactionManager {
         warn!("Timed out waiting for pending transactions, proceeding anyway");
     }
 
+    /// Categorize an error for metrics labeling.
+    fn categorize_error(error: &anyhow::Error) -> String {
+        let error_str = error.to_string().to_lowercase();
+
+        if error_str.contains("insufficient funds") || error_str.contains("insufficient balance") {
+            "insufficient_funds".to_string()
+        } else if error_str.contains("reverted") {
+            "reverted".to_string()
+        } else if error_str.contains("timeout") {
+            "timeout".to_string()
+        } else if error_str.contains("nonce") {
+            "nonce_error".to_string()
+        } else if error_str.contains("rpc") || error_str.contains("connection") {
+            "rpc_error".to_string()
+        } else if error_str.contains("chain id mismatch") {
+            "chain_id_mismatch".to_string()
+        } else {
+            "unknown".to_string()
+        }
+    }
+
     /// Wait for the required number of confirmations
     async fn wait_for_confirmations<P: Provider<Http<Client>>>(
         &self,
@@ -490,7 +596,31 @@ impl EvmTransactionManager {
 impl TransactionManager for EvmTransactionManager {
     async fn anchor_root(&self, root: Cid) -> Result<RootTimeEvent> {
         // Submit transaction and wait for confirmation
-        let anchor_result = self.submit_and_wait(root).await?;
+        let anchor_result = match self.submit_and_wait(root).await {
+            Ok(result) => {
+                // Record success metrics
+                if let Some(ref metrics) = self.metrics {
+                    metrics.record(&EvmEvent::TransactionSucceeded {
+                        chain_id: self.config.chain_id,
+                        transaction_duration: result.total_duration,
+                        confirmation_duration: result.confirmation_duration,
+                        gas_cost_wei: result.gas_cost_wei,
+                    });
+                }
+                result
+            }
+            Err(e) => {
+                // Record failure metrics
+                if let Some(ref metrics) = self.metrics {
+                    let error_type = Self::categorize_error(&e);
+                    metrics.record(&EvmEvent::TransactionFailed {
+                        chain_id: self.config.chain_id,
+                        error_type,
+                    });
+                }
+                return Err(e);
+            }
+        };
 
         // Build anchor proof from transaction details
         let proof =
