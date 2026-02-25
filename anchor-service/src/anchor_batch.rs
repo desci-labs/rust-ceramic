@@ -215,7 +215,9 @@ impl AnchorService {
 
         // Deduplicate requests by stream ID
         let anchor_requests: Vec<AnchorRequest> = IndexMap::<Cid, AnchorRequest>::from_iter(
-            raw_requests.into_iter().map(|request| (request.id, request)),
+            raw_requests
+                .into_iter()
+                .map(|request| (request.id, request)),
         )
         .into_values()
         .collect();

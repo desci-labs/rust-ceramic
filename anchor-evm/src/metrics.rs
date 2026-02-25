@@ -193,7 +193,9 @@ impl Recorder<EvmEvent> for Metrics {
     fn record(&self, event: &EvmEvent) {
         match event {
             EvmEvent::TransactionSubmitted { chain_id } => {
-                let labels = ChainLabels { chain_id: *chain_id };
+                let labels = ChainLabels {
+                    chain_id: *chain_id,
+                };
                 self.transactions_total.get_or_create(&labels).inc();
             }
             EvmEvent::TransactionSucceeded {
@@ -202,7 +204,9 @@ impl Recorder<EvmEvent> for Metrics {
                 confirmation_duration,
                 gas_cost_wei,
             } => {
-                let labels = ChainLabels { chain_id: *chain_id };
+                let labels = ChainLabels {
+                    chain_id: *chain_id,
+                };
 
                 self.transactions_successful.get_or_create(&labels).inc();
 
@@ -225,7 +229,10 @@ impl Recorder<EvmEvent> for Metrics {
                     .unwrap_or(0);
                 self.last_success_timestamp.get_or_create(&labels).set(now);
             }
-            EvmEvent::TransactionFailed { chain_id, error_type } => {
+            EvmEvent::TransactionFailed {
+                chain_id,
+                error_type,
+            } => {
                 let labels = ErrorLabels {
                     chain_id: *chain_id,
                     error_type: error_type.clone(),
@@ -233,11 +240,18 @@ impl Recorder<EvmEvent> for Metrics {
                 self.transactions_failed.get_or_create(&labels).inc();
             }
             EvmEvent::RetryAttempt { chain_id } => {
-                let labels = ChainLabels { chain_id: *chain_id };
+                let labels = ChainLabels {
+                    chain_id: *chain_id,
+                };
                 self.retry_attempts.get_or_create(&labels).inc();
             }
-            EvmEvent::WalletBalanceUpdated { chain_id, balance_wei } => {
-                let labels = ChainLabels { chain_id: *chain_id };
+            EvmEvent::WalletBalanceUpdated {
+                chain_id,
+                balance_wei,
+            } => {
+                let labels = ChainLabels {
+                    chain_id: *chain_id,
+                };
                 // Convert wei to gwei (divide by 10^9) to fit in i64
                 let balance_gwei = (*balance_wei / 1_000_000_000) as i64;
                 self.wallet_balance_gwei

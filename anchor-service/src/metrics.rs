@@ -228,9 +228,7 @@ impl Metrics {
         register!(
             dedup_ratio,
             "Ratio of requests remaining after deduplication (0.0-1.0)",
-            Histogram::new(
-                [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0].into_iter()
-            ),
+            Histogram::new([0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0].into_iter()),
             sub_registry
         );
 

@@ -114,7 +114,10 @@ impl EvmTransactionManager {
     }
 
     /// Create a new EVM transaction manager with optional metrics.
-    pub async fn new_with_metrics(config: EvmConfig, metrics: Option<Arc<Metrics>>) -> Result<Self> {
+    pub async fn new_with_metrics(
+        config: EvmConfig,
+        metrics: Option<Arc<Metrics>>,
+    ) -> Result<Self> {
         // Validate configuration
         Self::validate_config(&config)?;
 
@@ -310,27 +313,27 @@ impl EvmTransactionManager {
                             let total_duration = total_start.elapsed();
 
                             // Log ending wallet balance and calculate gas cost
-                            let gas_cost_wei: u128 =
-                                if let Ok(ending_balance) = provider.get_balance(wallet_address).await
-                                {
-                                    info!("Ending wallet balance: {} wei", ending_balance);
-                                    let gas_used = starting_balance.saturating_sub(ending_balance);
-                                    info!("Total gas cost: {} wei", gas_used);
+                            let gas_cost_wei: u128 = if let Ok(ending_balance) =
+                                provider.get_balance(wallet_address).await
+                            {
+                                info!("Ending wallet balance: {} wei", ending_balance);
+                                let gas_used = starting_balance.saturating_sub(ending_balance);
+                                info!("Total gas cost: {} wei", gas_used);
 
-                                    // Update wallet balance metric
-                                    if let Some(ref metrics) = self.metrics {
-                                        let balance_u128: u128 =
-                                            ending_balance.try_into().unwrap_or(u128::MAX);
-                                        metrics.record(&EvmEvent::WalletBalanceUpdated {
-                                            chain_id: self.config.chain_id,
-                                            balance_wei: balance_u128,
-                                        });
-                                    }
+                                // Update wallet balance metric
+                                if let Some(ref metrics) = self.metrics {
+                                    let balance_u128: u128 =
+                                        ending_balance.try_into().unwrap_or(u128::MAX);
+                                    metrics.record(&EvmEvent::WalletBalanceUpdated {
+                                        chain_id: self.config.chain_id,
+                                        balance_wei: balance_u128,
+                                    });
+                                }
 
-                                    gas_used.try_into().unwrap_or(u128::MAX)
-                                } else {
-                                    0
-                                };
+                                gas_used.try_into().unwrap_or(u128::MAX)
+                            } else {
+                                0
+                            };
 
                             // Get block hash from receipt
                             let block_hash = receipt
@@ -395,26 +398,26 @@ impl EvmTransactionManager {
                                 info!("Previous transaction {} was mined successfully", prev_tx);
                                 let total_duration = total_start.elapsed();
 
-                                let gas_cost_wei: u128 =
-                                    if let Ok(ending_balance) = provider.get_balance(wallet_address).await
-                                    {
-                                        info!("Ending wallet balance: {} wei", ending_balance);
-                                        let gas_used = starting_balance.saturating_sub(ending_balance);
+                                let gas_cost_wei: u128 = if let Ok(ending_balance) =
+                                    provider.get_balance(wallet_address).await
+                                {
+                                    info!("Ending wallet balance: {} wei", ending_balance);
+                                    let gas_used = starting_balance.saturating_sub(ending_balance);
 
-                                        // Update wallet balance metric
-                                        if let Some(ref metrics) = self.metrics {
-                                            let balance_u128: u128 =
-                                                ending_balance.try_into().unwrap_or(u128::MAX);
-                                            metrics.record(&EvmEvent::WalletBalanceUpdated {
-                                                chain_id: self.config.chain_id,
-                                                balance_wei: balance_u128,
-                                            });
-                                        }
+                                    // Update wallet balance metric
+                                    if let Some(ref metrics) = self.metrics {
+                                        let balance_u128: u128 =
+                                            ending_balance.try_into().unwrap_or(u128::MAX);
+                                        metrics.record(&EvmEvent::WalletBalanceUpdated {
+                                            chain_id: self.config.chain_id,
+                                            balance_wei: balance_u128,
+                                        });
+                                    }
 
-                                        gas_used.try_into().unwrap_or(u128::MAX)
-                                    } else {
-                                        0
-                                    };
+                                    gas_used.try_into().unwrap_or(u128::MAX)
+                                } else {
+                                    0
+                                };
 
                                 // Get block info from the previous receipt
                                 let block_hash = prev_receipt.block_hash.ok_or_else(|| {
