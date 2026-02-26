@@ -176,18 +176,17 @@ impl AnchorService {
 
         // Pass the anchor requests through a deduplication step to avoid anchoring multiple Data Events from the same
         // Stream.
-        let high_water_mark = self
-            .high_water_mark_store
-            .high_water_mark()
-            .await
-            .expect("error getting high water mark from database");
-
-        // Update high water mark metric
-        if let Some(ref metrics) = self.metrics {
-            metrics.record(&AnchorEvent::HighWaterMarkUpdated {
-                value: high_water_mark,
-            });
-        }
+        let high_water_mark = match self.high_water_mark_store.high_water_mark().await {
+            Ok(hwm) => hwm,
+            Err(e) => {
+                if let Some(ref metrics) = self.metrics {
+                    metrics.record(&AnchorEvent::BatchFailed {
+                        error_type: "hwm_read_error".to_string(),
+                    });
+                }
+                return Err(e);
+            }
+        };
 
         // Get the next batch of anchor requests
         let fetch_start = Instant::now();

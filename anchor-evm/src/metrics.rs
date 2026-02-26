@@ -253,7 +253,8 @@ impl Recorder<EvmEvent> for Metrics {
                     chain_id: *chain_id,
                 };
                 // Convert wei to gwei (divide by 10^9) to fit in i64
-                let balance_gwei = (*balance_wei / 1_000_000_000) as i64;
+                // Use try_from to avoid overflow wrapping for extremely large balances
+                let balance_gwei = i64::try_from(*balance_wei / 1_000_000_000).unwrap_or(i64::MAX);
                 self.wallet_balance_gwei
                     .get_or_create(&labels)
                     .set(balance_gwei);

@@ -168,8 +168,6 @@ impl EvmTransactionManager {
 
     /// Submit an anchor transaction and wait for confirmation with retry logic
     async fn submit_and_wait(&self, root_cid: Cid) -> Result<AnchorResult> {
-        let total_start = Instant::now();
-
         info!(
             "Anchoring root CID: {} on chain {}",
             root_cid, self.config.chain_id
@@ -241,7 +239,8 @@ impl EvmTransactionManager {
         // Convert CID to bytes32 for contract call
         let root_bytes32 = Self::cid_to_bytes32(&root_cid)?;
 
-        // Retry loop
+        // Retry loop - timing starts here to measure actual transaction submission and confirmation
+        let total_start = Instant::now();
         let max_retries = self.config.retry_config.max_retries;
         let mut last_error: Option<anyhow::Error> = None;
         let mut previous_tx_hashes: Vec<String> = Vec::new();
