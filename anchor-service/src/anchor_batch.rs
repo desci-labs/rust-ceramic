@@ -1,6 +1,7 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use ceramic_core::{Cid, NodeId};
+use ceramic_metrics::Recorder;
 use ceramic_sql::sqlite::SqlitePool;
 use chrono::DurationRound;
 use chrono::{TimeDelta, Utc};
@@ -13,6 +14,7 @@ use tokio::time::{interval_at, Instant, Interval, MissedTickBehavior};
 use tracing::{error, info};
 
 use crate::high_water_mark_store::HighWaterMarkStore;
+use crate::metrics::{AnchorEvent, Metrics};
 use crate::{
     anchor::{AnchorRequest, TimeEventBatch, TimeEventInsertable},
     merkle_tree::{build_merkle_tree, MerkleTree},
@@ -43,10 +45,11 @@ pub struct AnchorService {
     node_id: NodeId,
     anchor_interval: Duration,
     anchor_batch_size: u64,
+    metrics: Option<Arc<Metrics>>,
 }
 
 impl AnchorService {
-    /// Create a new AnchorService.
+    /// Create a new AnchorService without metrics.
     pub fn new(
         tx_manager: Arc<dyn TransactionManager>,
         event_service: Arc<dyn Store>,
@@ -55,6 +58,27 @@ impl AnchorService {
         anchor_interval: Duration,
         anchor_batch_size: u64,
     ) -> Self {
+        Self::new_with_metrics(
+            tx_manager,
+            event_service,
+            pool,
+            node_id,
+            anchor_interval,
+            anchor_batch_size,
+            None,
+        )
+    }
+
+    /// Create a new AnchorService with optional metrics.
+    pub fn new_with_metrics(
+        tx_manager: Arc<dyn TransactionManager>,
+        event_service: Arc<dyn Store>,
+        pool: SqlitePool,
+        node_id: NodeId,
+        anchor_interval: Duration,
+        anchor_batch_size: u64,
+        metrics: Option<Arc<Metrics>>,
+    ) -> Self {
         Self {
             tx_manager,
             event_service,
@@ -62,6 +86,7 @@ impl AnchorService {
             node_id,
             anchor_interval,
             anchor_batch_size,
+            metrics,
         }
     }
 
@@ -77,6 +102,10 @@ impl AnchorService {
         pin_mut!(shutdown_signal);
 
         info!("anchor service started");
+        if let Some(ref metrics) = self.metrics {
+            metrics.record(&AnchorEvent::ServiceStarted);
+        }
+
         let mut interval = self.build_interval();
 
         loop {
@@ -92,6 +121,10 @@ impl AnchorService {
                     break;
                 }
             }
+        }
+
+        if let Some(ref metrics) = self.metrics {
+            metrics.record(&AnchorEvent::ServiceStopped);
         }
         info!("anchor service stopped");
     }
@@ -134,15 +167,30 @@ impl AnchorService {
     }
 
     async fn process_next_batch(&mut self) -> Result<()> {
+        let batch_start = Instant::now();
+
+        // Record that we're starting a batch attempt
+        if let Some(ref metrics) = self.metrics {
+            metrics.record(&AnchorEvent::BatchStarted);
+        }
+
         // Pass the anchor requests through a deduplication step to avoid anchoring multiple Data Events from the same
         // Stream.
-        let high_water_mark = self
-            .high_water_mark_store
-            .high_water_mark()
-            .await
-            .expect("error getting high water mark from database");
+        let high_water_mark = match self.high_water_mark_store.high_water_mark().await {
+            Ok(hwm) => hwm,
+            Err(e) => {
+                if let Some(ref metrics) = self.metrics {
+                    metrics.record(&AnchorEvent::BatchFailed {
+                        error_type: "hwm_read_error".to_string(),
+                    });
+                }
+                return Err(e);
+            }
+        };
+
         // Get the next batch of anchor requests
-        let anchor_requests: Vec<AnchorRequest> = match self
+        let fetch_start = Instant::now();
+        let raw_requests = match self
             .event_service
             .events_since_high_water_mark(
                 self.node_id,
@@ -151,29 +199,126 @@ impl AnchorService {
             )
             .await
         {
-            Ok(requests) => IndexMap::<Cid, AnchorRequest>::from_iter(
-                requests.into_iter().map(|request| (request.id, request)),
-            )
-            .into_values()
-            .collect(),
+            Ok(requests) => requests,
             Err(e) => {
+                if let Some(ref metrics) = self.metrics {
+                    metrics.record(&AnchorEvent::BatchFailed {
+                        error_type: "fetch_error".to_string(),
+                    });
+                }
                 return Err(e);
             }
         };
+        let fetch_duration = fetch_start.elapsed();
+        let requests_received = raw_requests.len() as u64;
+
+        // Deduplicate requests by stream ID
+        let anchor_requests: Vec<AnchorRequest> = IndexMap::<Cid, AnchorRequest>::from_iter(
+            raw_requests
+                .into_iter()
+                .map(|request| (request.id, request)),
+        )
+        .into_values()
+        .collect();
+        let requests_after_dedup = anchor_requests.len() as u64;
+
         if anchor_requests.is_empty() {
             info!("no requests to anchor");
+            if let Some(ref metrics) = self.metrics {
+                metrics.record(&AnchorEvent::BatchEmpty);
+            }
             return Ok(());
         }
-        // Anchor the batch to the CAS. This may block for a long time.
-        match self.anchor_batch(anchor_requests.as_slice()).await {
-            Ok(time_event_batch) => {
-                if let Err(e) = self.store_time_events(time_event_batch).await {
-                    error!("error writing time events: {:?}", e);
+
+        // Build Merkle tree and anchor
+        let tree_build_start = Instant::now();
+        let MerkleTree {
+            root_cid,
+            nodes: local_merkle_nodes,
+            count,
+        } = match build_merkle_tree(&anchor_requests) {
+            Ok(tree) => tree,
+            Err(e) => {
+                if let Some(ref metrics) = self.metrics {
+                    metrics.record(&AnchorEvent::BatchFailed {
+                        error_type: "tree_build_error".to_string(),
+                    });
                 }
-                Ok(())
+                return Err(e);
             }
-            Err(e) => Err(e),
+        };
+        let tree_build_duration = tree_build_start.elapsed();
+
+        // Anchor the root via TransactionManager
+        let anchor_start = Instant::now();
+        let RootTimeEvent {
+            proof,
+            detached_time_event,
+            mut remote_merkle_nodes,
+            chain_inclusion,
+        } = match self.tx_manager.anchor_root(root_cid).await {
+            Ok(result) => result,
+            Err(e) => {
+                if let Some(ref metrics) = self.metrics {
+                    metrics.record(&AnchorEvent::BatchFailed {
+                        error_type: "anchor_error".to_string(),
+                    });
+                }
+                return Err(e);
+            }
+        };
+        let anchor_duration = anchor_start.elapsed();
+
+        // Build time events
+        let time_events = match build_time_events(&anchor_requests, &detached_time_event, count) {
+            Ok(events) => events,
+            Err(e) => {
+                if let Some(ref metrics) = self.metrics {
+                    metrics.record(&AnchorEvent::BatchFailed {
+                        error_type: "time_event_build_error".to_string(),
+                    });
+                }
+                return Err(e);
+            }
+        };
+
+        remote_merkle_nodes.extend(local_merkle_nodes);
+        let time_event_batch = TimeEventBatch {
+            merkle_nodes: remote_merkle_nodes,
+            proof,
+            raw_time_events: time_events,
+            chain_inclusion,
+        };
+
+        // Store time events
+        let store_start = Instant::now();
+        let time_events_count = time_event_batch.raw_time_events.events.len() as u64;
+        if let Err(e) = self.store_time_events(time_event_batch).await {
+            error!("error writing time events: {:?}", e);
+            if let Some(ref metrics) = self.metrics {
+                metrics.record(&AnchorEvent::BatchFailed {
+                    error_type: "store_error".to_string(),
+                });
+            }
+            return Err(e);
         }
+        let store_duration = store_start.elapsed();
+
+        // Record success metrics
+        if let Some(ref metrics) = self.metrics {
+            metrics.record(&AnchorEvent::BatchSucceeded {
+                requests_received,
+                requests_after_dedup,
+                time_events_stored: time_events_count,
+                total_duration: batch_start.elapsed(),
+                fetch_duration,
+                tree_build_duration,
+                anchor_duration,
+                store_duration,
+            });
+        }
+
+        Ok(())
     }
 
     /// Anchor a batch of requests using a Transaction Manager:
@@ -215,15 +360,24 @@ impl AnchorService {
 
         match time_event_batch.try_to_insertables() {
             Ok(insertables) => {
-                // Update the high water mark
+                // Store the time events
                 self.event_service
                     .insert_many(insertables, self.node_id)
                     .await?;
 
-                Ok(self
-                    .high_water_mark_store
+                // Update the high water mark in the database
+                self.high_water_mark_store
                     .insert_high_water_mark(new_high_water_mark)
-                    .await?)
+                    .await?;
+
+                // Update high water mark metric
+                if let Some(ref metrics) = self.metrics {
+                    metrics.record(&AnchorEvent::HighWaterMarkUpdated {
+                        value: new_high_water_mark,
+                    });
+                }
+
+                Ok(())
             }
             Err(e) => Err(e),
         }

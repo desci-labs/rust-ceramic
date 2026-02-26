@@ -6,6 +6,7 @@
 
 mod contract;
 mod evm_transaction_manager;
+pub mod metrics;
 mod proof_builder;
 
 #[cfg(test)]
@@ -13,3 +14,4 @@ mod integration_test;
 
 pub use contract::AnchorContract;
 pub use evm_transaction_manager::{EvmConfig, EvmTransactionManager, RetryConfig};
+pub use metrics::Metrics;
